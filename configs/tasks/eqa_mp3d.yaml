@@ -11,7 +11,7 @@ SIMULATOR:
   AGENT_0:
     SENSORS: ['RGB_SENSOR', 'SEMANTIC_SENSOR', 'DEPTH_SENSOR']
   HABITAT_SIM_V0:
-    GPU_DEVICE_ID: 0
+    GPU_DEVICE_ID: 2 
   RGB_SENSOR:
     WIDTH: 256
     HEIGHT: 256
@@ -25,5 +25,5 @@ SIMULATOR:
 DATASET:
   TYPE: MP3DEQA-v1
   SPLIT: train
-  DATA_PATH: "data/datasets/eqa/mp3d/v1/{split}/{split}.json.gz"
-  SCENES_DIR: "data/scene_datasets/"
+  DATA_PATH: "/scratch/habitat/data/datasets/eqa/mp3d/v1/{split}/{split}.json.gz"
+  SCENES_DIR: "/scratch/habitat/data/scene_datasets/"

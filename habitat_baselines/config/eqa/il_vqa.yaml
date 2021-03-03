@@ -2,8 +2,8 @@ BASE_TASK_CONFIG_PATH: "configs/tasks/eqa_mp3d.yaml"
 TRAINER_NAME: "vqa"
 
 ENV_NAME: "VQAILEnv"
-SIMULATOR_GPU_ID: 0
-TORCH_GPU_ID: 0
+SIMULATOR_GPU_ID: 2
+TORCH_GPU_ID: 2
 
 ONLY_VQA_TASK: False # if True, only last `num_frames` will be saved to disk.
 #if False, all frames for each episode are saved to disk (for NAV task later)
