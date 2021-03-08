@@ -397,6 +397,31 @@ def img_bytes_2_np_array(
         img = image.transpose(2, 0, 1)
         img = img / 255.0
         images.append(img)
+        #logger.info("img:{}".format(img))
+    return (*x[0:3], np.array(images, dtype=np.float32))
+
+
+def blindfold_2_np_array(
+    x: Tuple[int, torch.Tensor, bytes]
+) -> Tuple[int, torch.Tensor, bytes, np.ndarray]:
+    """Mapper function to convert image bytes in webdataset sample to numpy
+    arrays.
+    Args:
+        x: webdataset sample containing ep_id, question, answer and imgs
+    Returns:
+        Same sample with bytes turned into np arrays.
+    """
+    images = []
+    img_bytes: bytes
+    for img_bytes in x[3:]:
+        bytes_obj = BytesIO()
+        bytes_obj.write(img_bytes)
+        image = np.array(Image.open(bytes_obj))
+        img = image.transpose(2, 0, 1)
+        img = img / 255.0
+        zero = np.zeros_like(img)
+        images.append(zero)
+        #logger.info("zero:{}".format(zero))
     return (*x[0:3], np.array(images, dtype=np.float32))
 
 

@@ -20,6 +20,7 @@ from habitat_baselines.il.data.data import EQADataset
 from habitat_baselines.il.metrics import VqaMetric
 from habitat_baselines.il.models.models import VqaLstmCnnAttentionModel
 from habitat_baselines.utils.common import img_bytes_2_np_array
+from habitat_baselines.utils.common import blindfold_2_np_array
 from habitat_baselines.utils.visualizations.utils import save_vqa_image_results
 
 
@@ -227,6 +228,8 @@ class VQATrainer(BaseILTrainer):
 
                         metrics.dump_log()
 
+                
+
                 # Dataloader length for IterableDataset doesn't take into
                 # account batch size for Pytorch v < 1.6.0
                 num_batches = math.ceil(
@@ -247,6 +250,7 @@ class VQATrainer(BaseILTrainer):
                     )
                 )
 
+                
                 logger.info("Average loss: {:.2f}".format(avg_loss))
                 logger.info("Average accuracy: {:.2f}".format(avg_accuracy))
                 logger.info("Average mean rank: {:.2f}".format(avg_mean_rank))
@@ -256,6 +260,7 @@ class VQATrainer(BaseILTrainer):
                     )
                 )
 
+                
                 print("-----------------------------------------")
 
                 self.save_checkpoint(
@@ -299,7 +304,8 @@ class VQATrainer(BaseILTrainer):
                 "answer",
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
             )
-            .map(img_bytes_2_np_array)
+        #    .map(img_bytes_2_np_array)
+            .map(blindfold_2_np_array)
         )
 
         eval_loader = DataLoader(
@@ -352,6 +358,7 @@ class VQATrainer(BaseILTrainer):
                 questions = questions.to(self.device)
                 answers = answers.to(self.device)
                 frame_queue = frame_queue.to(self.device)
+                #logger.info("frame queue: {}".format(frame_queue))
 
                 scores, _ = model(frame_queue, questions)
 
