@@ -17,7 +17,7 @@ class Metric:
         self.info = info
         self.metric_names = metric_names if metric_names else []
 
-        self.metrics = [[None, None, None] for _ in self.metric_names]
+        self.metrics = [[None] for _ in self.metric_names]
 
         self.stats = []
         self.num_iters = 0
@@ -37,31 +37,14 @@ class Metric:
             if isinstance(values[i], list) is False:
                 values[i] = [values[i]]
 
-            if self.metrics[i][0] is None:
-                self.metrics[i][0] = np.mean(values[i])
-                self.metrics[i][1] = np.mean(values[i])
-                self.metrics[i][2] = np.mean(values[i])
-            else:
-                self.metrics[i][0] = (
-                    self.metrics[i][0] * (self.num_iters - 1)
-                    + np.mean(values[i])
-                ) / self.num_iters
-
-                self.metrics[i][1] = 0.95 * self.metrics[i][
-                    1
-                ] + 0.05 * np.mean(values[i])
-
-                self.metrics[i][2] = np.mean(values[i])
-
+            self.metrics[i][0] = np.mean(values[i])
             self.metrics[i][0] = float(self.metrics[i][0])
-            self.metrics[i][1] = float(self.metrics[i][1])
-            self.metrics[i][2] = float(self.metrics[i][2])
 
             current_stats.append(self.metrics[i])
 
         self.stats.append(copy.deepcopy(current_stats))
 
-    def get_stat_string(self, mode: int = 1) -> str:
+    def get_stat_string(self, mode: int = 0) -> str:
 
         stat_string = ""
 
@@ -70,18 +53,18 @@ class Metric:
 
         stat_string += "[iters:{}]\n".format(self.num_iters)
         for i in range(len(self.metric_names)):
-            if self.metrics[i][mode] is not None:
+            if self.metrics[i][0] is not None:
                 stat_string += "[{}:{:.3f}]".format(
                     self.metric_names[i],
-                    self.metrics[i][mode],
+                    self.metrics[i][0],
                 )
 
         return stat_string
 
-    def get_stats(self, mode: int = 1) -> List[float]:
+    def get_stats(self, mode: int = 0) -> List[float]:
         stats = []
         for i in range(len(self.metric_names)):
-            stats.append(self.metrics[i][mode])
+            stats.append(self.metrics[i][0])
 
         return stats
 
