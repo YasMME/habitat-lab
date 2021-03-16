@@ -23,6 +23,8 @@ from habitat_baselines.utils.common import img_bytes_2_np_array
 from habitat_baselines.utils.common import blindfold_2_np_array
 from habitat_baselines.utils.visualizations.utils import save_vqa_image_results
 
+import csv
+
 
 @baseline_registry.register_trainer(name="vqa")
 class VQATrainer(BaseILTrainer):
@@ -110,8 +112,8 @@ class VQATrainer(BaseILTrainer):
             None
         """
         config = self.config
+#        env = habitat.Env(config=config.TASK_CONFIG)
 
-        # env = habitat.Env(config=config.TASK_CONFIG)
 
         vqa_dataset = (
             EQADataset(
@@ -180,94 +182,99 @@ class VQATrainer(BaseILTrainer):
         with TensorboardWriter(
             config.TENSORBOARD_DIR, flush_secs=self.flush_secs
         ) as writer:
-            while epoch <= config.IL.VQA.max_epochs:
-                start_time = time.time()
-                for batch in train_loader:
-                    t += 1
-                    _, questions, answers, frame_queue = batch
-                    optim.zero_grad()
+            with open('epochs.csv', mode='w') as file:
+                write = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                write.writerow(['avg_loss', 'avg_accuracy', 'avg_mean_rank', 'avg_mean_reciprocal_rank'])
+                while epoch <= config.IL.VQA.max_epochs:
+                    start_time = time.time()
+                    for batch in train_loader:
+                        t += 1
+                        _, questions, answers, frame_queue = batch
+                        optim.zero_grad()
 
-                    questions = questions.to(self.device)
-                    answers = answers.to(self.device)
-                    frame_queue = frame_queue.to(self.device)
+                        questions = questions.to(self.device)
+                        answers = answers.to(self.device)
+                        frame_queue = frame_queue.to(self.device)
 
-                    scores, _ = model(frame_queue, questions)
-                    loss = lossFn(scores, answers)
+                        scores, _ = model(frame_queue, questions)
+                        loss = lossFn(scores, answers)
 
-                    # update metrics
-                    accuracy, ranks = metrics.compute_ranks(
-                        scores.data.cpu(), answers
-                    )
-                    metrics.update([loss.item(), accuracy, ranks, 1.0 / ranks])
-
-                    loss.backward()
-                    optim.step()
-
-                    (
-                        metrics_loss,
-                        accuracy,
-                        mean_rank,
-                        mean_reciprocal_rank,
-                    ) = metrics.get_stats()
-
-                    avg_loss += metrics_loss
-                    avg_accuracy += accuracy
-                    avg_mean_rank += mean_rank
-                    avg_mean_reciprocal_rank += mean_reciprocal_rank
-
-                    if t % config.LOG_INTERVAL == 0:
-                        logger.info("Epoch: {}".format(epoch))
-                        logger.info(metrics.get_stat_string())
-
-                        writer.add_scalar("loss", metrics_loss, t)
-                        writer.add_scalar("accuracy", accuracy, t)
-                        writer.add_scalar("mean_rank", mean_rank, t)
-                        writer.add_scalar(
-                            "mean_reciprocal_rank", mean_reciprocal_rank, t
+                        # update metrics
+                        accuracy, ranks = metrics.compute_ranks(
+                            scores.data.cpu(), answers
                         )
+                        metrics.update([loss.item(), accuracy, ranks, 1.0 / ranks])
 
-                        metrics.dump_log()
+                        loss.backward()
+                        optim.step()
 
-                
+                        (
+                            metrics_loss,
+                            accuracy,
+                            mean_rank,
+                            mean_reciprocal_rank,
+                        ) = metrics.get_stats()
 
-                # Dataloader length for IterableDataset doesn't take into
-                # account batch size for Pytorch v < 1.6.0
-                num_batches = math.ceil(
-                    len(vqa_dataset) / config.IL.VQA.batch_size
-                )
+                        avg_loss += metrics_loss
+                        avg_accuracy += accuracy
+                        avg_mean_rank += mean_rank
+                        avg_mean_reciprocal_rank += mean_reciprocal_rank
 
-                avg_loss /= num_batches
-                avg_accuracy /= num_batches
-                avg_mean_rank /= num_batches
-                avg_mean_reciprocal_rank /= num_batches
+                        if t % config.LOG_INTERVAL == 0:
+                            logger.info("Epoch: {}".format(epoch))
+                            logger.info(metrics.get_stat_string())
 
-                end_time = time.time()
-                time_taken = "{:.1f}".format((end_time - start_time) / 60)
+                            writer.add_scalar("loss", metrics_loss, t)
+                            writer.add_scalar("accuracy", accuracy, t)
+                            writer.add_scalar("mean_rank", mean_rank, t)
+                            writer.add_scalar(
+                                "mean_reciprocal_rank", mean_reciprocal_rank, t
+                            )
 
-                logger.info(
-                    "Epoch {} completed. Time taken: {} minutes.".format(
-                        epoch, time_taken
+                            metrics.dump_log()
+
+                    
+
+                    # Dataloader length for IterableDataset doesn't take into
+                    # account batch size for Pytorch v < 1.6.0
+                    num_batches = math.ceil(
+                        len(vqa_dataset) / config.IL.VQA.batch_size
                     )
-                )
 
-                
-                logger.info("Average loss: {:.2f}".format(avg_loss))
-                logger.info("Average accuracy: {:.2f}".format(avg_accuracy))
-                logger.info("Average mean rank: {:.2f}".format(avg_mean_rank))
-                logger.info(
-                    "Average mean reciprocal rank: {:.2f}".format(
-                        avg_mean_reciprocal_rank
+                    avg_loss /= num_batches
+                    avg_accuracy /= num_batches
+                    avg_mean_rank /= num_batches
+                    avg_mean_reciprocal_rank /= num_batches
+
+                    end_time = time.time()
+                    time_taken = "{:.1f}".format((end_time - start_time) / 60)
+
+                    logger.info(
+                        "Epoch {} completed. Time taken: {} minutes.".format(
+                            epoch, time_taken
+                        )
                     )
-                )
 
-                
-                print("-----------------------------------------")
+                    
+                    logger.info("Average loss: {:.2f}".format(avg_loss))
+                    logger.info("Average accuracy: {:.2f}".format(avg_accuracy))
+                    logger.info("Average mean rank: {:.2f}".format(avg_mean_rank))
+                    logger.info(
+                        "Average mean reciprocal rank: {:.2f}".format(
+                            avg_mean_reciprocal_rank
+                        )
+                    )
 
-                self.save_checkpoint(
-                    model.state_dict(), "epoch_{}.ckpt".format(epoch)
-                )
+                    write.writerow([avg_loss, avg_accuracy, avg_mean_rank, avg_mean_reciprocal_rank])
 
-                epoch += 1
+                    
+                    print("-----------------------------------------")
+
+                    self.save_checkpoint(
+                        model.state_dict(), "epoch_{}.ckpt".format(epoch)
+                    )
+
+                    epoch += 1
 
     def _eval_checkpoint(
         self,
@@ -304,8 +311,8 @@ class VQATrainer(BaseILTrainer):
                 "answer",
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
             )
-        #    .map(img_bytes_2_np_array)
-            .map(blindfold_2_np_array)
+            .map(img_bytes_2_np_array)
+        #    .map(blindfold_2_np_array)
         )
 
         eval_loader = DataLoader(

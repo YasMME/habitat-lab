@@ -2,8 +2,8 @@ BASE_TASK_CONFIG_PATH: "configs/tasks/eqa_mp3d.yaml"
 TRAINER_NAME: "eqa-cnn-pretrain"
 
 ENV_NAME: "EQACNNPretrainILEnv"
-SIMULATOR_GPU_ID: 3
-TORCH_GPU_ID: 3
+SIMULATOR_GPU_ID: 1
+TORCH_GPU_ID: 1
 
 DATASET_PATH: "data/datasets/eqa/eqa_cnn_pretrain/{split}/{split}.db"
 

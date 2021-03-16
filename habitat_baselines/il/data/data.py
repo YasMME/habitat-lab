@@ -219,6 +219,7 @@ class EQADataset(wds.Dataset):
                 pos.position, pos.rotation
             )
             img = observation["rgb"]
+            #sem = observation["semantic"]
             idx = "{0:0=3d}".format(idx)
             episode_id = "{0:0=4d}".format(int(episode_id))
             new_path = os.path.join(
