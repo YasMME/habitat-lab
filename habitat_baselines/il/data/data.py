@@ -3,6 +3,7 @@ from typing import Callable, List, Tuple
 
 import cv2
 import numpy as np
+import pandas
 import torch
 import webdataset as wds
 import webdataset.filters as filters
@@ -30,6 +31,7 @@ class EQADataset(wds.Dataset):
         input_type,
         num_frames=5,
         max_controller_actions=5,
+        mp_dict={},
     ):
         """
         Args:
@@ -41,6 +43,7 @@ class EQADataset(wds.Dataset):
         self.config = config.TASK_CONFIG
         self.input_type = input_type
         self.num_frames = num_frames
+        self.mp_dict = pandas.read_csv('mpcat40.csv', header=None, index_col=0, squeeze=True).to_dict()
 
         with habitat.Env(config=self.config) as self.env:
             self.episodes = self.env._dataset.episodes
@@ -61,6 +64,8 @@ class EQADataset(wds.Dataset):
             self.frame_dataset_path = config.FRAME_DATASET_PATH.format(
                 split=self.mode
             )
+
+            self.semantic_dataset_path = "/home/yasmeen/Desktop/habitat-lab/data/datasets/eqa/frame_dataset/semantic_train"
 
             # [TODO] can be done in mp3d_eqa_dataset when loading
             self.calc_max_length()
@@ -119,11 +124,19 @@ class EQADataset(wds.Dataset):
                     self.frame_dataset_path,
                 )
 
+
                 logger.info("[ Tar archive created. ]")
                 logger.info(
                     "[ Deleting dataset folder. This will take a few minutes. ]"
                 )
+
+                create_tar_archive(
+                    self.semantic_dataset_path + ".tar",
+                    self.semantic_dataset_path
+                    )
+
                 delete_folder(self.frame_dataset_path)
+                delete_folder(self.semantic_dataset_path)
 
                 logger.info("[ Frame dataset is ready. ]")
 
@@ -207,6 +220,8 @@ class EQADataset(wds.Dataset):
         for idx, ep in enumerate(self.episodes):
             ep.episode_id = idx
 
+
+    
     def save_frame_queue(
         self,
         pos_queue: List[ShortestPathPoint],
@@ -218,6 +233,20 @@ class EQADataset(wds.Dataset):
             observation = self.env.sim.get_observations_at(
                 pos.position, pos.rotation
             )
+            # Convert Semantic Instance IDs to Semantic Category IDs
+            # Based on: https://github.com/facebookresearch/habitat-sim/issues/263
+            scene = self.env.sim.semantic_annotations()
+            instance_id_to_label_id = {int(obj.id.split("_")[-1]): obj.category.index() for obj in scene.objects}
+            mapping = np.array([ instance_id_to_label_id[i] for i in range(len(instance_id_to_label_id)) ])
+            sem = np.take(mapping, observation['semantic']) 
+            #sem_words = np.empty_like(sem, dtype='str')
+
+            #def f(x):
+            #    return self.mp_dict.get(x)
+            #v_mp_dict = np.vectorize(f)
+            #sem_words = v_mp_dict(sem)
+            #print(sem_words)
+
             img = observation["rgb"]
             idx = "{0:0=3d}".format(idx)
             episode_id = "{0:0=4d}".format(int(episode_id))
@@ -225,6 +254,12 @@ class EQADataset(wds.Dataset):
                 self.frame_dataset_path, "{}.{}".format(episode_id, idx)
             )
             cv2.imwrite(new_path + ".jpg", img[..., ::-1])
+
+            np_binary_path = os.path.join(
+                    self.semantic_dataset_path, "{}_{}.npy".format(episode_id, idx)
+                    )
+            with open(np_binary_path, 'wb') as np_binary:
+                np.save(np_binary, sem)
 
     def get_frames(self, frames_path, num=0):
         r"""Fetches frames from disk."""
@@ -238,6 +273,7 @@ class EQADataset(wds.Dataset):
         return np.array(frames, dtype=np.float32)
 
     def cache_exists(self) -> bool:
+        #return False
         if os.path.exists(self.frame_dataset_path + ".tar"):
             return True
         else:
