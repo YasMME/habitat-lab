@@ -302,10 +302,11 @@ class VQATrainer(BaseILTrainer):
                 "episode_id",
                 "question",
                 "answer",
+                *["sem{:03d}".format(y) for y in range(0, 5)],
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
             )
-        #    .map(img_bytes_2_np_array)
-            .map(blindfold_2_np_array)
+            .map(img_bytes_2_np_array)
+        #    .map(blindfold_2_np_array)
         )
 
         eval_loader = DataLoader(
@@ -354,11 +355,13 @@ class VQATrainer(BaseILTrainer):
         with torch.no_grad():
             for batch in eval_loader:
                 t += 1
-                episode_ids, questions, answers, frame_queue = batch
+                episode_ids, questions, answers, semantic_queue, frame_queue = batch
                 questions = questions.to(self.device)
                 answers = answers.to(self.device)
+                semantic_queue = semantic_queue.to(self.device)
                 frame_queue = frame_queue.to(self.device)
                 #logger.info("frame queue: {}".format(frame_queue))
+                #logger.info("semantic queue: {}".format(semantic_queue))
 
                 scores, _ = model(frame_queue, questions)
 

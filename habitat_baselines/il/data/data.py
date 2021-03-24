@@ -8,6 +8,8 @@ import torch
 import webdataset as wds
 import webdataset.filters as filters
 from tqdm import tqdm
+import tarfile
+from io import BytesIO
 
 import habitat
 from habitat import logger
@@ -31,7 +33,6 @@ class EQADataset(wds.Dataset):
         input_type,
         num_frames=5,
         max_controller_actions=5,
-        mp_dict={},
     ):
         """
         Args:
@@ -43,7 +44,6 @@ class EQADataset(wds.Dataset):
         self.config = config.TASK_CONFIG
         self.input_type = input_type
         self.num_frames = num_frames
-        self.mp_dict = pandas.read_csv('mpcat40.csv', header=None, index_col=0, squeeze=True).to_dict()
 
         with habitat.Env(config=self.config) as self.env:
             self.episodes = self.env._dataset.episodes
@@ -154,6 +154,8 @@ class EQADataset(wds.Dataset):
         keys: function that splits the key into key and extension (base_plus_ext)
         lcase: convert suffixes to lower case (Default value = True)
         """
+        tar_path = self.semantic_dataset_path + ".tar"
+        semantic_tar = tarfile.open(tar_path, 'r')
         current_sample = {}
         for fname, value in data:
             prefix, suffix = keys(fname)
@@ -161,33 +163,45 @@ class EQADataset(wds.Dataset):
                 continue
             if lcase:
                 suffix = suffix.lower()
+            
             if not current_sample or prefix != current_sample["__key__"]:
                 if valid_sample(current_sample):
                     yield current_sample
-
                 current_sample = dict(__key__=prefix)
-
                 episode_id = int(prefix[prefix.rfind("/") + 1 :])
                 current_sample["episode_id"] = self.episodes[
                     episode_id
                 ].episode_id
 
+                
                 question = self.episodes[episode_id].question.question_tokens
                 if len(question) < self.max_q_len:
                     diff = self.max_q_len - len(question)
                     for _ in range(diff):
                         question.append(0)
 
+
                 current_sample["question"] = torch.LongTensor(question)
                 current_sample["answer"] = self.ans_vocab.word2idx(
                     self.episodes[episode_id].question.answer_text
                 )
+            array_file = BytesIO()
+            frame_num, _ = os.path.splitext(suffix)
+            semantic_file = 'data/datasets/eqa/semantic_dataset/{}/{:04d}.{}.npy'.format(self.mode, episode_id, frame_num)
+            array_file.write(semantic_tar.extractfile(semantic_file).read())
+            array_file.seek(0)
+            sem = np.load(array_file)
+            array_file.truncate(0)
+
+
             if suffix in current_sample:
                 raise ValueError(
                     f"{fname}: duplicate file name in tar file {suffix} {current_sample.keys()}"
                 )
             if suffixes is None or suffix in suffixes:
                 current_sample[suffix] = value
+                sem_tag = "sem" + str(frame_num)
+                current_sample[sem_tag] = sem
 
         if valid_sample(current_sample):
             yield current_sample
@@ -245,14 +259,6 @@ class EQADataset(wds.Dataset):
                 )
         with open(np_binary_path, 'wb') as np_binary:
             np.save(np_binary, sem)
-        
-        #sem_words = np.empty_like(sem, dtype='str')
-
-        #def f(x):
-        #    return self.mp_dict.get(x)
-        #v_mp_dict = np.vectorize(f)
-        #sem_words = v_mp_dict(sem)
-        #print(sem_words)
 
     def save_image_queue(
         self,
