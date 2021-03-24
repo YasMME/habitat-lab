@@ -65,7 +65,9 @@ class EQADataset(wds.Dataset):
                 split=self.mode
             )
 
-            self.semantic_dataset_path = "/home/yasmeen/Desktop/habitat-lab/data/datasets/eqa/frame_dataset/semantic_train"
+            self.semantic_dataset_path = config.SEMANTIC_DATASET_PATH.format(
+                split = self.mode
+            )
 
             # [TODO] can be done in mp3d_eqa_dataset when loading
             self.calc_max_length()
@@ -255,6 +257,8 @@ class EQADataset(wds.Dataset):
             )
             cv2.imwrite(new_path + ".jpg", img[..., ::-1])
 
+            if not os.path.exists(self.semantic_dataset_path):
+                os.makedirs(self.semantic_dataset_path)
             np_binary_path = os.path.join(
                     self.semantic_dataset_path, "{}_{}.npy".format(episode_id, idx)
                     )

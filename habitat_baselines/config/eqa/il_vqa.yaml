@@ -2,17 +2,18 @@ BASE_TASK_CONFIG_PATH: "configs/tasks/eqa_mp3d.yaml"
 TRAINER_NAME: "vqa"
 
 ENV_NAME: "VQAILEnv"
-SIMULATOR_GPU_ID: 3
-TORCH_GPU_ID: 3
+SIMULATOR_GPU_ID: 0
+TORCH_GPU_ID: 0
 
 ONLY_VQA_TASK: True # if True, only last `num_frames` will be saved to disk.
 #if False, all frames for each episode are saved to disk (for NAV task later)
 DATASET_PATH: "data/datasets/eqa/frame_dataset/{split}/{split}.db"
 FRAME_DATASET_PATH: "data/datasets/eqa/frame_dataset/{split}"
+SEMANTIC_DATASET_PATH: "data/datasets/eqa/semantic_dataset/{split}"
 EVAL_CKPT_PATH_DIR: "data/eqa/vqa/checkpoints/epoch_50.ckpt"
 EQA_CNN_PRETRAIN_CKPT_PATH: "data/eqa/eqa_cnn_pretrain/checkpoints/epoch_5.ckpt"
 
-SENSORS: ["RGB_SENSOR"]
+SENSORS: ["RGB_SENSOR", "SEMANTIC_SENSOR"]
 CHECKPOINT_FOLDER: "data/eqa/vqa/checkpoints/"
 TENSORBOARD_DIR: "data/eqa/vqa/tb"
 RESULTS_DIR: "data/eqa/vqa/results/{split}"
@@ -27,7 +28,7 @@ IL:
   VQA:
     # vqa params
     num_frames: 5
-    max_epochs: 50
+    max_epochs: 2
     batch_size: 20
     lr: 3e-4
     freeze_encoder: False
