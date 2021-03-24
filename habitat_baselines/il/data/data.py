@@ -75,7 +75,7 @@ class EQADataset(wds.Dataset):
 
             group_by_keys = filters.Curried(self.group_by_keys_)
             super().__init__(
-                urls=self.frame_dataset_path + ".tar",
+                urls= self.frame_dataset_path + ".tar",
                 initial_pipeline=[group_by_keys()],
             )
 
@@ -117,7 +117,7 @@ class EQADataset(wds.Dataset):
                         else:
                             pos_queue = episode.shortest_paths[0]
 
-                        self.save_frame_queue(pos_queue, episode.episode_id)
+                        self.save_data_queues(pos_queue, episode.episode_id)
 
                 logger.info("[ Saved all episodes' frames to disk. ]")
 
@@ -223,58 +223,79 @@ class EQADataset(wds.Dataset):
             ep.episode_id = idx
 
 
-    
-    def save_frame_queue(
+    def save_semantic_queue(
+        self,
+        obs, 
+        episode_id,
+        idx
+    )   -> None:
+        r"""Convert Semantic Instance IDs to Semantic Category IDs
+        Based on: https://github.com/facebookresearch/habitat-sim/issues/263"""
+        scene = self.env.sim.semantic_annotations()
+        instance_id_to_label_id = {int(obj.id.split("_")[-1]): obj.category.index() for obj in scene.objects}
+        mapping = np.array([ instance_id_to_label_id[i] for i in range(len(instance_id_to_label_id)) ])
+        sem = np.take(mapping, obs)
+        idx = "{0:0=3d}".format(idx)
+        episode_id = "{0:0=4d}".format(int(episode_id))
+
+        if not os.path.exists(self.semantic_dataset_path):
+            os.makedirs(self.semantic_dataset_path)
+        np_binary_path = os.path.join(
+                self.semantic_dataset_path, "{}.{}.npy".format(episode_id, idx)
+                )
+        with open(np_binary_path, 'wb') as np_binary:
+            np.save(np_binary, sem)
+        
+        #sem_words = np.empty_like(sem, dtype='str')
+
+        #def f(x):
+        #    return self.mp_dict.get(x)
+        #v_mp_dict = np.vectorize(f)
+        #sem_words = v_mp_dict(sem)
+        #print(sem_words)
+
+    def save_image_queue(
+        self,
+        img,
+        episode_id,
+        idx
+    ) -> None:
+        r"""Writes episode's frame queue to disk."""
+        idx = "{0:0=3d}".format(idx)
+        episode_id = "{0:0=4d}".format(int(episode_id))
+        new_path = os.path.join(
+            self.frame_dataset_path, "{}.{}".format(episode_id, idx)
+        )
+        cv2.imwrite(new_path + ".jpg", img[..., ::-1])
+
+    def save_data_queues(
         self,
         pos_queue: List[ShortestPathPoint],
         episode_id,
     ) -> None:
-        r"""Writes episode's frame queue to disk."""
 
         for idx, pos in enumerate(pos_queue[::-1]):
             observation = self.env.sim.get_observations_at(
                 pos.position, pos.rotation
             )
-            # Convert Semantic Instance IDs to Semantic Category IDs
-            # Based on: https://github.com/facebookresearch/habitat-sim/issues/263
-            scene = self.env.sim.semantic_annotations()
-            instance_id_to_label_id = {int(obj.id.split("_")[-1]): obj.category.index() for obj in scene.objects}
-            mapping = np.array([ instance_id_to_label_id[i] for i in range(len(instance_id_to_label_id)) ])
-            sem = np.take(mapping, observation['semantic']) 
-            #sem_words = np.empty_like(sem, dtype='str')
 
-            #def f(x):
-            #    return self.mp_dict.get(x)
-            #v_mp_dict = np.vectorize(f)
-            #sem_words = v_mp_dict(sem)
-            #print(sem_words)
+            sem = observation["semantic"]
+            self.save_semantic_queue(sem, episode_id, idx)
 
             img = observation["rgb"]
-            idx = "{0:0=3d}".format(idx)
-            episode_id = "{0:0=4d}".format(int(episode_id))
-            new_path = os.path.join(
-                self.frame_dataset_path, "{}.{}".format(episode_id, idx)
-            )
-            cv2.imwrite(new_path + ".jpg", img[..., ::-1])
+            self.save_image_queue(img, episode_id, idx)
 
-            if not os.path.exists(self.semantic_dataset_path):
-                os.makedirs(self.semantic_dataset_path)
-            np_binary_path = os.path.join(
-                    self.semantic_dataset_path, "{}_{}.npy".format(episode_id, idx)
-                    )
-            with open(np_binary_path, 'wb') as np_binary:
-                np.save(np_binary, sem)
 
-    def get_frames(self, frames_path, num=0):
-        r"""Fetches frames from disk."""
-        frames = []
-        for img in sorted(os.listdir(frames_path))[-num:]:
-            img_path = os.path.join(frames_path, img)
-            img = cv2.imread(img_path)[..., ::-1]
-            img = img.transpose(2, 0, 1)
-            img = img / 255.0
-            frames.append(img)
-        return np.array(frames, dtype=np.float32)
+#    def get_frames(self, frames_path, num=0):
+#        r"""Fetches frames from disk."""
+#        frames = []
+#        for img in sorted(os.listdir(frames_path))[-num:]:
+#            img_path = os.path.join(frames_path, img)
+#            img = cv2.imread(img_path)[..., ::-1]
+#            img = img.transpose(2, 0, 1)
+#            img = img / 255.0
+#            frames.append(img)
+#        return np.array(frames, dtype=np.float32)
 
     def cache_exists(self) -> bool:
         #return False
