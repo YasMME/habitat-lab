@@ -317,7 +317,7 @@ class VqaLstmCnnAttentionModel(nn.Module):
         )
 
     def forward(
-        self, images: Tensor, questions: Tensor
+            self, images: Tensor, semantic: Tensor, questions: Tensor
     ) -> Tuple[Tensor, Tensor]:
 
         N, T, _, _, _ = images.size()

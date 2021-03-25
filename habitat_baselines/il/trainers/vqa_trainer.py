@@ -124,6 +124,7 @@ class VQATrainer(BaseILTrainer):
                 "episode_id",
                 "question",
                 "answer",
+                *["sem{:03d}".format(y) for y in range(0, 5)],
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
             )
             .map(img_bytes_2_np_array)
@@ -184,14 +185,15 @@ class VQATrainer(BaseILTrainer):
                 start_time = time.time()
                 for batch in train_loader:
                     t += 1
-                    _, questions, answers, frame_queue = batch
+                    _, questions, answers, semantic_queue, frame_queue = batch
                     optim.zero_grad()
 
                     questions = questions.to(self.device)
                     answers = answers.to(self.device)
+                    semantic_queue = semantic_queue.to(self.device)
                     frame_queue = frame_queue.to(self.device)
 
-                    scores, _ = model(frame_queue, questions)
+                    scores, _ = model(frame_queue, semantic_queue, questions)
                     loss = lossFn(scores, answers)
 
                     # update metrics
@@ -361,9 +363,9 @@ class VQATrainer(BaseILTrainer):
                 semantic_queue = semantic_queue.to(self.device)
                 frame_queue = frame_queue.to(self.device)
                 #logger.info("frame queue: {}".format(frame_queue))
-                #logger.info("semantic queue: {}".format(semantic_queue))
+                logger.info("semantic queue: {}".format(semantic_queue))
 
-                scores, _ = model(frame_queue, questions)
+                scores, _ = model(frame_queue, semantic_queue, questions)
 
                 loss = lossFn(scores, answers)
 
