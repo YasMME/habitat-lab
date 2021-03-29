@@ -401,7 +401,7 @@ def img_bytes_2_np_array(
         Same sample with bytes turned into np arrays.
     """
     images = []
-    sem = np.array(x[4:7])
+    sem = np.array(x[3:8])
     img_bytes: bytes
     for img_bytes in x[8:]:
         bytes_obj = BytesIO()
@@ -410,7 +410,6 @@ def img_bytes_2_np_array(
         img = image.transpose(2, 0, 1)
         img = img / 255.0
         images.append(img)
-        #logger.info("img:{}".format(img))
     return (*x[0:3], sem, np.array(images, dtype=np.float32))
 
 
@@ -425,7 +424,7 @@ def blindfold_2_np_array(
         Same sample with bytes turned into np arrays.
     """
     images = []
-    sem = np.array(x[4:7])
+    sem = np.array(x[3:8])
     img_bytes: bytes
     for img_bytes in x[8:]:
         bytes_obj = BytesIO()
