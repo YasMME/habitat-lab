@@ -7,6 +7,7 @@
 import math
 import os
 import time
+import csv
 
 import torch
 from torch.utils.data import DataLoader
@@ -126,6 +127,7 @@ class VQATrainer(BaseILTrainer):
                 "episode_id",
                 "question",
                 "answer",
+                *["sem{:03d}".format(y) for y in range(0, 5)],
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
             )
             .map(img_bytes_2_np_array)
@@ -182,99 +184,94 @@ class VQATrainer(BaseILTrainer):
         with TensorboardWriter(
             config.TENSORBOARD_DIR, flush_secs=self.flush_secs
         ) as writer:
-            with open('epochs.csv', mode='w') as file:
-                write = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-                write.writerow(['avg_loss', 'avg_accuracy', 'avg_mean_rank', 'avg_mean_reciprocal_rank'])
-                while epoch <= config.IL.VQA.max_epochs:
-                    start_time = time.time()
-                    for batch in train_loader:
-                        t += 1
-                        _, questions, answers, frame_queue = batch
-                        optim.zero_grad()
+            while epoch <= config.IL.VQA.max_epochs:
+                start_time = time.time()
+                for batch in train_loader:
+                    t += 1
+                    _, questions, answers, semantic_queue, frame_queue = batch
+                    optim.zero_grad()
 
-                        questions = questions.to(self.device)
-                        answers = answers.to(self.device)
-                        frame_queue = frame_queue.to(self.device)
+                    questions = questions.to(self.device)
+                    answers = answers.to(self.device)
+                    semantic_queue = semantic_queue.to(self.device)
+                    frame_queue = frame_queue.to(self.device)
 
-                        scores, _ = model(frame_queue, questions)
-                        loss = lossFn(scores, answers)
+                    scores, _ = model(frame_queue, semantic_queue, questions)
+                    loss = lossFn(scores, answers)
 
-                        # update metrics
-                        accuracy, ranks = metrics.compute_ranks(
-                            scores.data.cpu(), answers
+                    # update metrics
+                    accuracy, ranks = metrics.compute_ranks(
+                        scores.data.cpu(), answers
+                    )
+                    metrics.update([loss.item(), accuracy, ranks, 1.0 / ranks])
+
+                    loss.backward()
+                    optim.step()
+
+                    (
+                        metrics_loss,
+                        accuracy,
+                        mean_rank,
+                        mean_reciprocal_rank,
+                    ) = metrics.get_stats()
+
+                    avg_loss += metrics_loss
+                    avg_accuracy += accuracy
+                    avg_mean_rank += mean_rank
+                    avg_mean_reciprocal_rank += mean_reciprocal_rank
+
+                    if t % config.LOG_INTERVAL == 0:
+                        logger.info("Epoch: {}".format(epoch))
+                        logger.info(metrics.get_stat_string())
+
+                        writer.add_scalar("loss", metrics_loss, t)
+                        writer.add_scalar("accuracy", accuracy, t)
+                        writer.add_scalar("mean_rank", mean_rank, t)
+                        writer.add_scalar(
+                            "mean_reciprocal_rank", mean_reciprocal_rank, t
                         )
-                        metrics.update([loss.item(), accuracy, ranks, 1.0 / ranks])
-
-                        loss.backward()
-                        optim.step()
-
-                        (
-                            metrics_loss,
-                            accuracy,
-                            mean_rank,
-                            mean_reciprocal_rank,
-                        ) = metrics.get_stats()
-
-                        avg_loss += metrics_loss
-                        avg_accuracy += accuracy
-                        avg_mean_rank += mean_rank
-                        avg_mean_reciprocal_rank += mean_reciprocal_rank
-
-                        if t % config.LOG_INTERVAL == 0:
-                            logger.info("Epoch: {}".format(epoch))
-                            logger.info(metrics.get_stat_string())
-
-                            writer.add_scalar("loss", metrics_loss, t)
-                            writer.add_scalar("accuracy", accuracy, t)
-                            writer.add_scalar("mean_rank", mean_rank, t)
-                            writer.add_scalar(
-                                "mean_reciprocal_rank", mean_reciprocal_rank, t
-                            )
-
-                            metrics.dump_log()
-
+                        metrics.dump_log()
                     
 
-                    # Dataloader length for IterableDataset doesn't take into
-                    # account batch size for Pytorch v < 1.6.0
-                    num_batches = math.ceil(
-                        len(vqa_dataset) / config.IL.VQA.batch_size
+                # Dataloader length for IterableDataset doesn't take into
+                # account batch size for Pytorch v < 1.6.0
+                num_batches = math.ceil(
+                    len(vqa_dataset) / config.IL.VQA.batch_size
+                )
+
+                avg_loss /= num_batches
+                avg_accuracy /= num_batches
+                avg_mean_rank /= num_batches
+                avg_mean_reciprocal_rank /= num_batches
+
+                end_time = time.time()
+                time_taken = "{:.1f}".format((end_time - start_time) / 60)
+
+                logger.info(
+                    "Epoch {} completed. Time taken: {} minutes.".format(
+                        epoch, time_taken
                     )
+                )
 
-                    avg_loss /= num_batches
-                    avg_accuracy /= num_batches
-                    avg_mean_rank /= num_batches
-                    avg_mean_reciprocal_rank /= num_batches
-
-                    end_time = time.time()
-                    time_taken = "{:.1f}".format((end_time - start_time) / 60)
-
-                    logger.info(
-                        "Epoch {} completed. Time taken: {} minutes.".format(
-                            epoch, time_taken
-                        )
+                
+                logger.info("Average loss: {:.2f}".format(avg_loss))
+                logger.info("Average accuracy: {:.2f}".format(avg_accuracy))
+                logger.info("Average mean rank: {:.2f}".format(avg_mean_rank))
+                logger.info(
+                    "Average mean reciprocal rank: {:.2f}".format(
+                        avg_mean_reciprocal_rank
                     )
+                )
 
-                    
-                    logger.info("Average loss: {:.2f}".format(avg_loss))
-                    logger.info("Average accuracy: {:.2f}".format(avg_accuracy))
-                    logger.info("Average mean rank: {:.2f}".format(avg_mean_rank))
-                    logger.info(
-                        "Average mean reciprocal rank: {:.2f}".format(
-                            avg_mean_reciprocal_rank
-                        )
-                    )
 
-                    write.writerow([avg_loss, avg_accuracy, avg_mean_rank, avg_mean_reciprocal_rank])
+                
+                print("-----------------------------------------")
 
-                    
-                    print("-----------------------------------------")
+                self.save_checkpoint(
+                    model.state_dict(), "epoch_{}.ckpt".format(epoch)
+                )
 
-                    self.save_checkpoint(
-                        model.state_dict(), "epoch_{}.ckpt".format(epoch)
-                    )
-
-                    epoch += 1
+                epoch += 1
 
     def _eval_checkpoint(
         self,
@@ -309,6 +306,7 @@ class VQATrainer(BaseILTrainer):
                 "episode_id",
                 "question",
                 "answer",
+                *["sem{:03d}".format(y) for y in range(0, 5)],
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
             )
             .map(img_bytes_2_np_array)
@@ -359,54 +357,72 @@ class VQATrainer(BaseILTrainer):
             log_json=os.path.join(config.OUTPUT_LOG_DIR, "eval.json"),
         )
         with torch.no_grad():
-            for batch in eval_loader:
-                t += 1
-                episode_ids, questions, answers, frame_queue = batch
-                questions = questions.to(self.device)
-                answers = answers.to(self.device)
-                frame_queue = frame_queue.to(self.device)
-                #logger.info("frame queue: {}".format(frame_queue))
+            with open('wrong_answers.csv', mode='w') as file:
+                write = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                write.writerow(['question', 'ground truth', 'ground truth position', 'prediction', 'images'])
+                for batch in eval_loader:
+                    t += 1
+                    episode_ids, questions, answers, semantic_queue, frame_queue = batch
+                    questions = questions.to(self.device)
+                    answers = answers.to(self.device)
+                    semantic_queue = semantic_queue.to(self.device)
+                    frame_queue = frame_queue.to(self.device)
 
-                scores, _ = model(frame_queue, questions)
+                    scores, _ = model(frame_queue, semantic_queue, questions)
 
-                loss = lossFn(scores, answers)
+                    loss = lossFn(scores, answers)
 
-                accuracy, ranks = metrics.compute_ranks(
-                    scores.data.cpu(), answers
-                )
-                metrics.update([loss.item(), accuracy, ranks, 1.0 / ranks])
-
-                (
-                    metrics_loss,
-                    accuracy,
-                    mean_rank,
-                    mean_reciprocal_rank,
-                ) = metrics.get_stats(mode=0)
-
-                avg_loss += metrics_loss
-                avg_accuracy += accuracy
-                avg_mean_rank += mean_rank
-                avg_mean_reciprocal_rank += mean_reciprocal_rank
-
-                if t % config.LOG_INTERVAL == 0:
-                    logger.info(metrics.get_stat_string(mode=0))
-                    metrics.dump_log()
-
-                if (
-                    config.EVAL_SAVE_RESULTS
-                    and t % config.EVAL_SAVE_RESULTS_INTERVAL == 0
-                ):
-
-                    self._save_vqa_results(
-                        checkpoint_index,
-                        episode_ids,
-                        questions,
-                        frame_queue,
-                        scores,
-                        answers,
-                        q_vocab_dict,
-                        ans_vocab_dict,
+                    accuracy, ranks = metrics.compute_ranks(
+                        scores.data.cpu(), answers
                     )
+                    metrics.update([loss.item(), accuracy, ranks, 1.0 / ranks])
+
+                    (
+                        metrics_loss,
+                        accuracy,
+                        mean_rank,
+                        mean_reciprocal_rank,
+                    ) = metrics.get_stats(mode=0)
+
+                    avg_loss += metrics_loss
+                    avg_accuracy += accuracy
+                    avg_mean_rank += mean_rank
+                    avg_mean_reciprocal_rank += mean_reciprocal_rank
+
+                    idx = 0
+                    for s in scores:
+                        _, indices = s.topk(len(ans_vocab_dict.word2idx_dict))
+                        score, ans_index = s.max(0)
+                        gt_answer = answers[idx]
+                        gt_pos = indices.flatten().tolist().index(gt_answer)
+                        gt_answer = sorted(ans_vocab_dict.word2idx_dict.keys())[gt_answer]
+                        pred_answer = sorted(ans_vocab_dict.word2idx_dict.keys())[ans_index]
+                        if gt_answer != pred_answer:
+                            question = questions[idx]
+                            q_string = q_vocab_dict.token_idx_2_string(question)
+                            images = frame_queue[idx]
+                            write.writerow([q_string, gt_answer, gt_pos, pred_answer, images])
+                        idx+=1
+
+                    if t % config.LOG_INTERVAL == 0:
+                        logger.info(metrics.get_stat_string(mode=0))
+                        metrics.dump_log()
+
+                    if (
+                        config.EVAL_SAVE_RESULTS
+                        and t % config.EVAL_SAVE_RESULTS_INTERVAL == 0
+                    ):
+
+                        self._save_vqa_results(
+                            checkpoint_index,
+                            episode_ids,
+                            questions,
+                            frame_queue,
+                            scores,
+                            answers,
+                            q_vocab_dict,
+                            ans_vocab_dict,
+                        )
 
         num_batches = math.ceil(len(vqa_dataset) / config.IL.VQA.batch_size)
 

@@ -212,6 +212,15 @@ class MultitaskCNN(nn.Module):
         return out_seg, out_depth, out_ae
 
 
+#class SimpleCNN(nn.Module)
+#    def __init(self):
+#        super().__init__()
+
+ #       self.conv2 = nn.Conv2d(1, 5, 8, 1) #in_channels, out_channels, kernel, stride
+
+
+
+
 class QuestionLstmEncoder(nn.Module):
     def __init__(
         self,
@@ -289,6 +298,10 @@ class VqaLstmCnnAttentionModel(nn.Module):
             nn.Linear(32 * 12 * 12, 64), nn.ReLU(), nn.Dropout(p=0.5)
         )
 
+        self.cat_linear = nn.Sequential(
+            nn.Linear(65536, 64), nn.ReLU(), nn.Dropout(p=0.5)
+        )
+
         q_rnn_kwargs = {
             "token_to_idx": q_vocab,
             "wordvec_dim": question_wordvec_dim,
@@ -317,7 +330,7 @@ class VqaLstmCnnAttentionModel(nn.Module):
         )
 
     def forward(
-        self, images: Tensor, questions: Tensor
+            self, images: Tensor, semantic: Tensor, questions: Tensor
     ) -> Tuple[Tensor, Tensor]:
 
         N, T, _, _, _ = images.size()
@@ -327,10 +340,19 @@ class VqaLstmCnnAttentionModel(nn.Module):
                 -1, images.size(2), images.size(3), images.size(4)
             )
         )
+        
+        sem_in = semantic.contiguous().view(
+                -1, 1, semantic.size(2), semantic.size(3)
+            )
+        sem_in = sem_in.view(N*T, -1).float()
+        sem_out = self.cat_linear(sem_in)
 
         img_feats = self.cnn_fc_layer(img_feats)
 
         img_feats_tr = self.img_tr(img_feats)
+
+        img_sem_feats = torch.mul(img_feats_tr, sem_out)
+
         ques_feats = self.q_rnn(questions)
 
         ques_feats_repl = ques_feats.view(N, 1, -1).repeat(1, T, 1)
@@ -338,7 +360,7 @@ class VqaLstmCnnAttentionModel(nn.Module):
 
         ques_feats_tr = self.ques_tr(ques_feats_repl)
 
-        ques_img_feats = torch.cat([ques_feats_tr, img_feats_tr], 1)
+        ques_img_feats = torch.cat([ques_feats_tr, img_sem_feats], 1)
 
         att_feats = self.att(ques_img_feats)
         att_probs = F.softmax(att_feats.view(N, T), dim=1)

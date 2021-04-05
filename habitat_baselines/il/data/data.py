@@ -3,10 +3,13 @@ from typing import Callable, List, Tuple
 
 import cv2
 import numpy as np
+import pandas
 import torch
 import webdataset as wds
 import webdataset.filters as filters
 from tqdm import tqdm
+import tarfile
+from io import BytesIO
 
 import habitat
 from habitat import logger
@@ -62,13 +65,17 @@ class EQADataset(wds.Dataset):
                 split=self.mode
             )
 
+            self.semantic_dataset_path = config.SEMANTIC_DATASET_PATH.format(
+                split = self.mode
+            )
+
             # [TODO] can be done in mp3d_eqa_dataset when loading
             self.calc_max_length()
             self.restructure_ans_vocab()
 
             group_by_keys = filters.Curried(self.group_by_keys_)
             super().__init__(
-                urls=self.frame_dataset_path + ".tar",
+                urls= self.frame_dataset_path + ".tar",
                 initial_pipeline=[group_by_keys()],
             )
 
@@ -110,7 +117,7 @@ class EQADataset(wds.Dataset):
                         else:
                             pos_queue = episode.shortest_paths[0]
 
-                        self.save_frame_queue(pos_queue, episode.episode_id)
+                        self.save_data_queues(pos_queue, episode.episode_id)
 
                 logger.info("[ Saved all episodes' frames to disk. ]")
 
@@ -119,11 +126,19 @@ class EQADataset(wds.Dataset):
                     self.frame_dataset_path,
                 )
 
+
                 logger.info("[ Tar archive created. ]")
                 logger.info(
                     "[ Deleting dataset folder. This will take a few minutes. ]"
                 )
+
+                create_tar_archive(
+                    self.semantic_dataset_path + ".tar",
+                    self.semantic_dataset_path
+                    )
+
                 delete_folder(self.frame_dataset_path)
+                delete_folder(self.semantic_dataset_path)
 
                 logger.info("[ Frame dataset is ready. ]")
 
@@ -139,6 +154,8 @@ class EQADataset(wds.Dataset):
         keys: function that splits the key into key and extension (base_plus_ext)
         lcase: convert suffixes to lower case (Default value = True)
         """
+        tar_path = self.semantic_dataset_path + ".tar"
+        semantic_tar = tarfile.open(tar_path, 'r')
         current_sample = {}
         for fname, value in data:
             prefix, suffix = keys(fname)
@@ -146,33 +163,45 @@ class EQADataset(wds.Dataset):
                 continue
             if lcase:
                 suffix = suffix.lower()
+            
             if not current_sample or prefix != current_sample["__key__"]:
                 if valid_sample(current_sample):
                     yield current_sample
-
                 current_sample = dict(__key__=prefix)
-
                 episode_id = int(prefix[prefix.rfind("/") + 1 :])
                 current_sample["episode_id"] = self.episodes[
                     episode_id
                 ].episode_id
 
+                
                 question = self.episodes[episode_id].question.question_tokens
                 if len(question) < self.max_q_len:
                     diff = self.max_q_len - len(question)
                     for _ in range(diff):
                         question.append(0)
 
+
                 current_sample["question"] = torch.LongTensor(question)
                 current_sample["answer"] = self.ans_vocab.word2idx(
                     self.episodes[episode_id].question.answer_text
                 )
+            array_file = BytesIO()
+            frame_num, _ = os.path.splitext(suffix)
+            semantic_file = 'scratch/habitat/data/datasets/eqa/semantic_dataset/{}/{:04d}.{}.npy'.format(self.mode, episode_id, frame_num)
+            array_file.write(semantic_tar.extractfile(semantic_file).read())
+            array_file.seek(0)
+            sem = np.load(array_file)
+            array_file.truncate(0)
+
+
             if suffix in current_sample:
                 raise ValueError(
                     f"{fname}: duplicate file name in tar file {suffix} {current_sample.keys()}"
                 )
             if suffixes is None or suffix in suffixes:
                 current_sample[suffix] = value
+                sem_tag = "sem" + str(frame_num)
+                current_sample[sem_tag] = sem
 
         if valid_sample(current_sample):
             yield current_sample
@@ -207,38 +236,63 @@ class EQADataset(wds.Dataset):
         for idx, ep in enumerate(self.episodes):
             ep.episode_id = idx
 
-    def save_frame_queue(
+
+    def save_semantic_queue(
+        self,
+        obs, 
+        episode_id,
+        idx
+    )   -> None:
+        r"""Convert Semantic Instance IDs to Semantic Category IDs
+        Based on: https://github.com/facebookresearch/habitat-sim/issues/263"""
+        scene = self.env.sim.semantic_annotations()
+        instance_id_to_label_id = {int(obj.id.split("_")[-1]): obj.category.index() for obj in scene.objects}
+        mapping = np.array([ instance_id_to_label_id[i] for i in range(len(instance_id_to_label_id)) ])
+        sem = np.take(mapping, obs)
+        idx = "{0:0=3d}".format(idx)
+        episode_id = "{0:0=4d}".format(int(episode_id))
+
+        if not os.path.exists(self.semantic_dataset_path):
+            os.makedirs(self.semantic_dataset_path)
+        np_binary_path = os.path.join(
+                self.semantic_dataset_path, "{}.{}.npy".format(episode_id, idx)
+                )
+        with open(np_binary_path, 'wb') as np_binary:
+            np.save(np_binary, sem)
+
+    def save_image_queue(
+        self,
+        img,
+        episode_id,
+        idx
+    ) -> None:
+        r"""Writes episode's frame queue to disk."""
+        idx = "{0:0=3d}".format(idx)
+        episode_id = "{0:0=4d}".format(int(episode_id))
+        new_path = os.path.join(
+            self.frame_dataset_path, "{}.{}".format(episode_id, idx)
+        )
+        cv2.imwrite(new_path + ".jpg", img[..., ::-1])
+
+    def save_data_queues(
         self,
         pos_queue: List[ShortestPathPoint],
         episode_id,
     ) -> None:
-        r"""Writes episode's frame queue to disk."""
 
         for idx, pos in enumerate(pos_queue[::-1]):
             observation = self.env.sim.get_observations_at(
                 pos.position, pos.rotation
             )
-            img = observation["rgb"]
-            #sem = observation["semantic"]
-            idx = "{0:0=3d}".format(idx)
-            episode_id = "{0:0=4d}".format(int(episode_id))
-            new_path = os.path.join(
-                self.frame_dataset_path, "{}.{}".format(episode_id, idx)
-            )
-            cv2.imwrite(new_path + ".jpg", img[..., ::-1])
 
-    def get_frames(self, frames_path, num=0):
-        r"""Fetches frames from disk."""
-        frames = []
-        for img in sorted(os.listdir(frames_path))[-num:]:
-            img_path = os.path.join(frames_path, img)
-            img = cv2.imread(img_path)[..., ::-1]
-            img = img.transpose(2, 0, 1)
-            img = img / 255.0
-            frames.append(img)
-        return np.array(frames, dtype=np.float32)
+            sem = observation["semantic"]
+            self.save_semantic_queue(sem, episode_id, idx)
+
+            img = observation["rgb"]
+            self.save_image_queue(img, episode_id, idx)
 
     def cache_exists(self) -> bool:
+        #return False
         if os.path.exists(self.frame_dataset_path + ".tar"):
             return True
         else:
