@@ -182,12 +182,13 @@ class EQADataset(wds.Dataset):
 
 
                 current_sample["question"] = torch.LongTensor(question)
+                current_sample["question_type"] = self.episodes[episode_id].question.question_type
                 current_sample["answer"] = self.ans_vocab.word2idx(
                     self.episodes[episode_id].question.answer_text
                 )
             array_file = BytesIO()
             frame_num, _ = os.path.splitext(suffix)
-            semantic_file = 'scratch/habitat/data/datasets/eqa/semantic_dataset/{}/{:04d}.{}.npy'.format(self.mode, episode_id, frame_num)
+            semantic_file = 'data/datasets/eqa/semantic_dataset/{}/{:04d}.{}.npy'.format(self.mode, episode_id, frame_num)
             array_file.write(semantic_tar.extractfile(semantic_file).read())
             array_file.seek(0)
             sem = np.load(array_file)

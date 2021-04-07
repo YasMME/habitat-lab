@@ -25,6 +25,8 @@ from habitat_baselines.utils.common import blindfold_2_np_array
 from habitat_baselines.utils.visualizations.utils import save_vqa_image_results
 
 import csv
+import numpy as np
+import pandas as pd
 
 
 @baseline_registry.register_trainer(name="vqa")
@@ -126,6 +128,7 @@ class VQATrainer(BaseILTrainer):
             .to_tuple(
                 "episode_id",
                 "question",
+                "question_type",
                 "answer",
                 *["sem{:03d}".format(y) for y in range(0, 5)],
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
@@ -188,7 +191,7 @@ class VQATrainer(BaseILTrainer):
                 start_time = time.time()
                 for batch in train_loader:
                     t += 1
-                    _, questions, answers, semantic_queue, frame_queue = batch
+                    _, questions, question_types, answers, semantic_queue, frame_queue = batch
                     optim.zero_grad()
 
                     questions = questions.to(self.device)
@@ -305,6 +308,7 @@ class VQATrainer(BaseILTrainer):
             .to_tuple(
                 "episode_id",
                 "question",
+                "question_type", 
                 "answer",
                 *["sem{:03d}".format(y) for y in range(0, 5)],
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
@@ -357,12 +361,13 @@ class VQATrainer(BaseILTrainer):
             log_json=os.path.join(config.OUTPUT_LOG_DIR, "eval.json"),
         )
         with torch.no_grad():
-            with open('wrong_answers.csv', mode='w') as file:
+            csv_name = 'wrong_answers{}.csv'.format(checkpoint_index)
+            with open(csv_name, mode='w') as file:
                 write = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-                write.writerow(['question', 'ground truth', 'ground truth position', 'prediction', 'images'])
+                write.writerow(['question', 'question_type', 'ground truth', 'ground truth position', 'prediction', 'episode_id'])
                 for batch in eval_loader:
                     t += 1
-                    episode_ids, questions, answers, semantic_queue, frame_queue = batch
+                    episode_ids, questions, question_types, answers, semantic_queue, frame_queue = batch
                     questions = questions.to(self.device)
                     answers = answers.to(self.device)
                     semantic_queue = semantic_queue.to(self.device)
@@ -394,14 +399,16 @@ class VQATrainer(BaseILTrainer):
                         _, indices = s.topk(len(ans_vocab_dict.word2idx_dict))
                         score, ans_index = s.max(0)
                         gt_answer = answers[idx]
+                        qtype = question_types[idx]
                         gt_pos = indices.flatten().tolist().index(gt_answer)
                         gt_answer = sorted(ans_vocab_dict.word2idx_dict.keys())[gt_answer]
                         pred_answer = sorted(ans_vocab_dict.word2idx_dict.keys())[ans_index]
+
                         if gt_answer != pred_answer:
+                            episode_id = episode_ids[idx].item()
                             question = questions[idx]
                             q_string = q_vocab_dict.token_idx_2_string(question)
-                            images = frame_queue[idx]
-                            write.writerow([q_string, gt_answer, gt_pos, pred_answer, images])
+                            write.writerow([q_string, qtype, gt_answer, gt_pos, pred_answer, episode_id])
                         idx+=1
 
                     if t % config.LOG_INTERVAL == 0:
@@ -423,6 +430,7 @@ class VQATrainer(BaseILTrainer):
                             q_vocab_dict,
                             ans_vocab_dict,
                         )
+
 
         num_batches = math.ceil(len(vqa_dataset) / config.IL.VQA.batch_size)
 

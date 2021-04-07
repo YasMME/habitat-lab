@@ -401,16 +401,16 @@ def img_bytes_2_np_array(
         Same sample with bytes turned into np arrays.
     """
     images = []
-    sem = np.array(x[3:8])
+    sem = np.array(x[4:9])
     img_bytes: bytes
-    for img_bytes in x[8:]:
+    for img_bytes in x[9:]:
         bytes_obj = BytesIO()
         bytes_obj.write(img_bytes)
         image = np.array(Image.open(bytes_obj))
         img = image.transpose(2, 0, 1)
         img = img / 255.0
         images.append(img)
-    return (*x[0:3], sem, np.array(images, dtype=np.float32))
+    return (*x[0:4], sem, np.array(images, dtype=np.float32))
 
 
 def blindfold_2_np_array(
@@ -423,16 +423,16 @@ def blindfold_2_np_array(
         Same sample with bytes np array of zeros.
     """
     images = []
-    sem = np.array(x[3:8])
+    sem = np.array(x[4:9])
     img_bytes: bytes
-    for img_bytes in x[8:]:
+    for img_bytes in x[9:]:
         bytes_obj = BytesIO()
         bytes_obj.write(img_bytes)
         image = np.array(Image.open(bytes_obj))
         img = image.transpose(2, 0, 1)
         zero = np.zeros_like(img)
         images.append(zero)
-    return (*x[0:3], sem, np.array(images, dtype=np.float32))
+    return (*x[0:4], sem, np.array(images, dtype=np.float32))
 
 
 def create_tar_archive(archive_path: str, dataset_path: str) -> None:
