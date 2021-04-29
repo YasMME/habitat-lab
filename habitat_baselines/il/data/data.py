@@ -22,6 +22,12 @@ from habitat_baselines.utils.common import (
     get_scene_episode_dict,
     valid_sample,
 )
+from habitat_sim.utils.common import (
+    quat_from_coeffs,
+    quat_to_coeffs, 
+    quat_to_angle_axis,
+    quat_from_angle_axis,
+)
 
 
 class EQADataset(wds.Dataset):
@@ -65,9 +71,6 @@ class EQADataset(wds.Dataset):
                 split=self.mode
             )
 
-            self.semantic_dataset_path = config.SEMANTIC_DATASET_PATH.format(
-                split = self.mode
-            )
 
             # [TODO] can be done in mp3d_eqa_dataset when loading
             self.calc_max_length()
@@ -112,7 +115,7 @@ class EQADataset(wds.Dataset):
 
                         if self.only_vqa_task:
                             pos_queue = episode.shortest_paths[0][
-                                -self.num_frames :  # noqa: E203
+                                -(self.num_frames - 4) :  # noqa: E203
                             ]
                         else:
                             pos_queue = episode.shortest_paths[0]
@@ -132,13 +135,7 @@ class EQADataset(wds.Dataset):
                     "[ Deleting dataset folder. This will take a few minutes. ]"
                 )
 
-                create_tar_archive(
-                    self.semantic_dataset_path + ".tar",
-                    self.semantic_dataset_path
-                    )
-
                 delete_folder(self.frame_dataset_path)
-                delete_folder(self.semantic_dataset_path)
 
                 logger.info("[ Frame dataset is ready. ]")
 
@@ -154,8 +151,6 @@ class EQADataset(wds.Dataset):
         keys: function that splits the key into key and extension (base_plus_ext)
         lcase: convert suffixes to lower case (Default value = True)
         """
-        tar_path = self.semantic_dataset_path + ".tar"
-        semantic_tar = tarfile.open(tar_path, 'r')
         current_sample = {}
         for fname, value in data:
             prefix, suffix = keys(fname)
@@ -186,23 +181,12 @@ class EQADataset(wds.Dataset):
                 current_sample["answer"] = self.ans_vocab.word2idx(
                     self.episodes[episode_id].question.answer_text
                 )
-            array_file = BytesIO()
-            frame_num, _ = os.path.splitext(suffix)
-            semantic_file = 'data/datasets/eqa/semantic_dataset/{}/{:04d}.{}.npy'.format(self.mode, episode_id, frame_num)
-            array_file.write(semantic_tar.extractfile(semantic_file).read())
-            array_file.seek(0)
-            sem = np.load(array_file)
-            array_file.truncate(0)
-
-
             if suffix in current_sample:
                 raise ValueError(
                     f"{fname}: duplicate file name in tar file {suffix} {current_sample.keys()}"
                 )
             if suffixes is None or suffix in suffixes:
                 current_sample[suffix] = value
-                sem_tag = "sem" + str(frame_num)
-                current_sample[sem_tag] = sem
 
         if valid_sample(current_sample):
             yield current_sample
@@ -274,23 +258,71 @@ class EQADataset(wds.Dataset):
             self.frame_dataset_path, "{}.{}".format(episode_id, idx)
         )
         cv2.imwrite(new_path + ".jpg", img[..., ::-1])
+    
+
+    def look_around(self, idx, episode_id, pos) -> None:
+        #assumes that original rotation is around the floor
+        position = pos.position
+        rotation = pos.rotation
+
+
+        #turn left 
+        q1 = quat_from_coeffs(rotation)
+        left_angle = - 0.523599
+        qleft = quat_from_angle_axis(left_angle, np.array([0,1,0]))
+        new_q = q1*qleft
+        new_rotation = quat_to_coeffs(new_q)
+        obs = self.env.sim.get_observations_at(position, new_rotation)
+        self.save_image_queue(obs["rgb"], episode_id, idx+1)
+
+        #turn right 30
+        right_angle = 0.523599
+        qright = quat_from_angle_axis(right_angle, np.array([0,1,0]))
+        new_q = q1*qright
+        new_rotation = quat_to_coeffs(new_q)
+        obs = self.env.sim.get_observations_at(position, new_rotation)
+        self.save_image_queue(obs["rgb"], episode_id, idx+2)
+
+        #look up
+        up_angle = 0.523599
+        qup = quat_from_angle_axis(up_angle, np.array([1,0,0]))
+        new_q = q1*qup
+        new_rotation = quat_to_coeffs(new_q)
+        obs = self.env.sim.get_observations_at(position, new_rotation)
+        self.save_image_queue(obs["rgb"], episode_id, idx+3)
+
+        #look down
+        down_angle = -0.523599
+        qdown = quat_from_angle_axis(down_angle, np.array([1,0,0]))
+        new_q = q1*qdown
+        new_rotation = quat_to_coeffs(new_q)
+        obs = self.env.sim.get_observations_at(position, new_rotation)
+        self.save_image_queue(obs["rgb"], episode_id, idx+4)
+
 
     def save_data_queues(
         self,
         pos_queue: List[ShortestPathPoint],
         episode_id,
     ) -> None:
+        last_pos = {}
 
+        #This is where the agent moves through the scene
         for idx, pos in enumerate(pos_queue[::-1]):
             observation = self.env.sim.get_observations_at(
                 pos.position, pos.rotation
             )
+            last_pos = pos
+            last_idx = idx
 
-            sem = observation["semantic"]
-            self.save_semantic_queue(sem, episode_id, idx)
+        #    sem = observation["semantic"]
+        #    self.save_semantic_queue(sem, episode_id, idx)
 
             img = observation["rgb"]
             self.save_image_queue(img, episode_id, idx)
+
+        self.look_around(last_idx, episode_id, last_pos) 
+
 
     def cache_exists(self) -> bool:
         #return False

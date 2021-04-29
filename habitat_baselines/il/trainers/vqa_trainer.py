@@ -130,7 +130,6 @@ class VQATrainer(BaseILTrainer):
                 "question",
                 "question_type",
                 "answer",
-                *["sem{:03d}".format(y) for y in range(0, 5)],
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
             )
             .map(img_bytes_2_np_array)
@@ -191,15 +190,17 @@ class VQATrainer(BaseILTrainer):
                 start_time = time.time()
                 for batch in train_loader:
                     t += 1
-                    _, questions, question_types, answers, semantic_queue, frame_queue = batch
+                    #_, questions, question_types, answers, semantic_queue, frame_queue = batch
+                    _, questions, question_types, answers, frame_queue = batch
                     optim.zero_grad()
 
                     questions = questions.to(self.device)
                     answers = answers.to(self.device)
-                    semantic_queue = semantic_queue.to(self.device)
+                    #semantic_queue = semantic_queue.to(self.device)
                     frame_queue = frame_queue.to(self.device)
 
-                    scores, _ = model(frame_queue, semantic_queue, questions)
+                    #scores, _ = model(frame_queue, semantic_queue, questions)
+                    scores, _ = model(frame_queue, questions)
                     loss = lossFn(scores, answers)
 
                     # update metrics
@@ -310,7 +311,6 @@ class VQATrainer(BaseILTrainer):
                 "question",
                 "question_type", 
                 "answer",
-                *["sem{:03d}".format(y) for y in range(0, 5)],
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
             )
             .map(img_bytes_2_np_array)
@@ -367,13 +367,15 @@ class VQATrainer(BaseILTrainer):
                 write.writerow(['question', 'question_type', 'ground truth', 'ground truth position', 'prediction', 'episode_id'])
                 for batch in eval_loader:
                     t += 1
-                    episode_ids, questions, question_types, answers, semantic_queue, frame_queue = batch
+        #            episode_ids, questions, question_types, answers, semantic_queue, frame_queue = batch
+                    episode_ids, questions, question_types, answers, frame_queue = batch
                     questions = questions.to(self.device)
                     answers = answers.to(self.device)
-                    semantic_queue = semantic_queue.to(self.device)
+         #           semantic_queue = semantic_queue.to(self.device)
                     frame_queue = frame_queue.to(self.device)
 
-                    scores, _ = model(frame_queue, semantic_queue, questions)
+          #          scores, _ = model(frame_queue, semantic_queue, questions)
+                    scores, _ = model(frame_queue, questions)
 
                     loss = lossFn(scores, answers)
 
