@@ -330,7 +330,7 @@ class VqaLstmCnnAttentionModel(nn.Module):
         )
 
     def forward(
-            self, images: Tensor, semantic: Tensor, questions: Tensor
+            self, images: Tensor, questions: Tensor
     ) -> Tuple[Tensor, Tensor]:
 
         N, T, _, _, _ = images.size()
@@ -341,17 +341,11 @@ class VqaLstmCnnAttentionModel(nn.Module):
             )
         )
         
-        sem_in = semantic.contiguous().view(
-                -1, 1, semantic.size(2), semantic.size(3)
-            )
-        sem_in = sem_in.view(N*T, -1).float()
-        sem_out = self.cat_linear(sem_in)
 
         img_feats = self.cnn_fc_layer(img_feats)
 
         img_feats_tr = self.img_tr(img_feats)
 
-        img_sem_feats = torch.mul(img_feats_tr, sem_out)
 
         ques_feats = self.q_rnn(questions)
 
@@ -360,7 +354,7 @@ class VqaLstmCnnAttentionModel(nn.Module):
 
         ques_feats_tr = self.ques_tr(ques_feats_repl)
 
-        ques_img_feats = torch.cat([ques_feats_tr, img_sem_feats], 1)
+        ques_img_feats = torch.cat([ques_feats_tr, img_feats_tr], 1)
 
         att_feats = self.att(ques_img_feats)
         att_probs = F.softmax(att_feats.view(N, T), dim=1)

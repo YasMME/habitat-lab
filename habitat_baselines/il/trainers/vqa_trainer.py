@@ -199,7 +199,8 @@ class VQATrainer(BaseILTrainer):
                     semantic_queue = semantic_queue.to(self.device)
                     frame_queue = frame_queue.to(self.device)
 
-                    scores, _ = model(frame_queue, semantic_queue, questions)
+#                    scores, _ = model(frame_queue, semantic_queue, questions)
+                    scores, _ = model(frame_queue, questions)
                     loss = lossFn(scores, answers)
 
                     # update metrics
