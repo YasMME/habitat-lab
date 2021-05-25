@@ -164,6 +164,7 @@ class EQADataset(wds.Dataset):
                         question.append(0)
 
                 current_sample["question"] = torch.LongTensor(question)
+                current_sample["question_type"] = self.episodes[episode_id].question.question_type
                 current_sample["answer"] = self.ans_vocab.word2idx(
                     self.episodes[episode_id].question.answer_text
                 )

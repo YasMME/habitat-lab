@@ -390,14 +390,14 @@ def img_bytes_2_np_array(
     """
     images = []
     img_bytes: bytes
-    for img_bytes in x[3:]:
+    for img_bytes in x[4:]:
         bytes_obj = BytesIO()
         bytes_obj.write(img_bytes)
         image = np.array(Image.open(bytes_obj))
         img = image.transpose(2, 0, 1)
         img = img / 255.0
         images.append(img)
-    return (*x[0:3], np.array(images, dtype=np.float32))
+    return (*x[0:4], np.array(images, dtype=np.float32))
 
 
 def create_tar_archive(archive_path: str, dataset_path: str) -> None:
