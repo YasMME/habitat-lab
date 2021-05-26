@@ -399,6 +399,17 @@ def img_bytes_2_np_array(
         images.append(img)
     return (*x[0:4], np.array(images, dtype=np.float32))
 
+def frcnn_data(x):
+    episode_id = x[0]
+    #TODO: Fix to use split
+    frcnn_tar = tarfile.open("/home/yasmeen/Downloads/frcnn/val.tar.gz")
+    array_file = BytesIO()
+    array_file.write(frcnn_tar.extractfile("frcnn_val/{0:0=4d}.{0:0=3d}.npz".format(episode_id, 2)))
+    array_file.seek(0)
+    a = numpy.load(array_file)
+    print(a['num_bbox'])
+    return img_bytes_2_np_array(x)
+
 
 def create_tar_archive(archive_path: str, dataset_path: str) -> None:
     """Creates tar archive of dataset and returns status code.

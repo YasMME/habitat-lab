@@ -20,7 +20,7 @@ from habitat_baselines.common.tensorboard_utils import TensorboardWriter
 from habitat_baselines.il.data.data import EQADataset
 from habitat_baselines.il.metrics import VqaMetric
 from habitat_baselines.il.models.models import VqaLstmCnnAttentionModel
-from habitat_baselines.utils.common import img_bytes_2_np_array
+from habitat_baselines.utils.common import img_bytes_2_np_array, frcnn_data
 from habitat_baselines.utils.visualizations.utils import save_vqa_image_results
 
 
@@ -123,10 +123,11 @@ class VQATrainer(BaseILTrainer):
             .to_tuple(
                 "episode_id",
                 "question",
+                "question_type",
                 "answer",
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
             )
-            .map(img_bytes_2_np_array)
+            .map(frcnn_data)
         )
 
         train_loader = DataLoader(
@@ -184,7 +185,7 @@ class VQATrainer(BaseILTrainer):
                 start_time = time.time()
                 for batch in train_loader:
                     t += 1
-                    _, questions, answers, frame_queue = batch
+                    _, questions, question_types, answers, frame_queue = batch
                     optim.zero_grad()
 
                     questions = questions.to(self.device)
