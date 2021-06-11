@@ -8,6 +8,7 @@ import math
 import os
 import time
 import csv
+import json
 
 import torch
 from torch.utils.data import DataLoader
@@ -121,6 +122,7 @@ class VQATrainer(BaseILTrainer):
             )
             .shuffle(1000)
             .to_tuple(
+                "split",
                 "episode_id",
                 "question",
                 "question_type",
@@ -174,6 +176,7 @@ class VQATrainer(BaseILTrainer):
 
         logger.info(model)
         model.train().to(self.device)
+        model.double()
 
         if config.IL.VQA.freeze_encoder:
             model.cnn.eval()
@@ -181,18 +184,30 @@ class VQATrainer(BaseILTrainer):
         with TensorboardWriter(
             config.TENSORBOARD_DIR, flush_secs=self.flush_secs
         ) as writer:
+            att_probs_data = {}
             while epoch <= config.IL.VQA.max_epochs:
                 start_time = time.time()
                 for batch in train_loader:
                     t += 1
-                    _, questions, question_types, answers, frame_queue = batch
+                    #_, questions, question_types, answers, frame_queue, attrs, attr_confs, bboxs, feats, objs, obj_confs   = batch
+                    _, questions, question_types, answers, feats = batch
                     optim.zero_grad()
 
                     questions = questions.to(self.device)
                     answers = answers.to(self.device)
-                    frame_queue = frame_queue.to(self.device)
+                    #frame_queue = frame_queue.to(self.device)
+                    #attrs = attrs.to(self.device)
+                    #attr_confs = attr_confs.to(self.device)
+                    #bboxs = bboxs.to(self.device)
+                    feats = feats.double()
+                    feats = feats.to(self.device)
+                    #objs = objs.to(self.device)
+                    #obj_confs = obj_confs.to(self.device)
 
-                    scores, _ = model(frame_queue, questions)
+                    #scores, _ = model(frame_queue, questions)
+                    scores, att_probs = model(feats, questions)
+                    #print(att_probs)
+                    att_probs_data[t] = att_probs.cpu().tolist()
                     loss = lossFn(scores, answers)
 
                     # update metrics
@@ -265,6 +280,8 @@ class VQATrainer(BaseILTrainer):
                 )
 
                 epoch += 1
+                with open('train_att_probs.json', 'w') as f:
+                    json.dump(att_probs_data, f)
 
     def _eval_checkpoint(
         self,
@@ -296,13 +313,14 @@ class VQATrainer(BaseILTrainer):
             )
             .shuffle(1000)
             .to_tuple(
+                "split",
                 "episode_id",
                 "question",
                 "question_type",
                 "answer",
                 *["{0:0=3d}.jpg".format(x) for x in range(0, 5)],
             )
-            .map(img_bytes_2_np_array)
+            .map(frcnn_data)
         )
 
         eval_loader = DataLoader(
@@ -336,6 +354,7 @@ class VQATrainer(BaseILTrainer):
 
         model.eval()
         model.cnn.eval()
+        model.double()
         model.to(self.device)
 
         metrics = VqaMetric(
@@ -349,18 +368,30 @@ class VQATrainer(BaseILTrainer):
             log_json=os.path.join(config.OUTPUT_LOG_DIR, "eval.json"),
         )
         with torch.no_grad():
+            att_probs_data = {}
             csv_name = 'wrong_answers{}.csv'.format(checkpoint_index)
             with open(csv_name, mode='w') as file:
                 write = csv.writer(file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
                 write.writerow(['question', 'question_type', 'ground truth', 'ground truth position', 'prediction', 'episode_id'])
                 for batch in eval_loader:
                     t += 1
-                    episode_ids, questions, question_types, answers, frame_queue = batch
+                    #episode_ids, questions, question_types, answers, frame_queue, attrs, attr_confs, bboxs, feats, objs, obj_confs   = batch
+                    episode_ids, questions, question_types, answers, feats = batch
+                    #episode_ids, questions, question_types, answers, frame_queue = batch
                     questions = questions.to(self.device)
                     answers = answers.to(self.device)
-                    frame_queue = frame_queue.to(self.device)
+                    #frame_queue = frame_queue.to(self.device)
+                    #attrs = attrs.to(self.device)
+                    #attr_confs = attr_confs.to(self.device)
+                    #bboxs = bboxs.to(self.device)
+                    feats = feats.to(self.device)
+                    #objs = objs.to(self.device)
+                    #obj_confs = obj_confs.to(self.device)
 
-                    scores, _ = model(frame_queue, questions)
+                    #scores, _ = model(frame_queue, questions)
+                    scores, att_probs = model(feats, questions)
+                    key = str(checkpoint_index) + "_" + str(t)
+                    att_probs_data[key] = att_probs.cpu().tolist()
 
                     loss = lossFn(scores, answers)
 
@@ -417,6 +448,8 @@ class VQATrainer(BaseILTrainer):
                             q_vocab_dict,
                             ans_vocab_dict,
                         )
+        with open('eval_att_probs.json', 'a') as f:
+            f.write("{}\n".format(json.dumps(att_probs_data)))
 
         num_batches = math.ceil(len(vqa_dataset) / config.IL.VQA.batch_size)
 

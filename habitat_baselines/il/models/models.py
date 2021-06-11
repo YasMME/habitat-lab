@@ -266,14 +266,14 @@ class VqaLstmCnnAttentionModel(nn.Module):
         ans_vocab: Dict,
         eqa_cnn_pretrain_ckpt_path: str,
         freeze_encoder: bool = False,
-        image_feat_dim: int = 64,
+        image_feat_dim: int = 2048,
         question_wordvec_dim: int = 64,
         question_hidden_dim: int = 64,
         question_num_layers: int = 2,
         question_dropout: float = 0.5,
         fc_use_batchnorm: bool = False,
         fc_dropout: float = 0.5,
-        fc_dims: Iterable[int] = (64,),
+        fc_dims: Iterable[int] = (2048,),
     ) -> None:
         super(VqaLstmCnnAttentionModel, self).__init__()
 
@@ -303,7 +303,7 @@ class VqaLstmCnnAttentionModel(nn.Module):
         self.ques_tr = nn.Sequential(nn.Linear(64, 64), nn.Dropout(p=0.5))
 
         classifier_kwargs = {
-            "input_dim": 64,
+            "input_dim": 2048,
             "hidden_dims": fc_dims,
             "output_dim": len(ans_vocab),
             "use_batchnorm": True,
@@ -313,43 +313,55 @@ class VqaLstmCnnAttentionModel(nn.Module):
         self.classifier = build_mlp(**classifier_kwargs)
 
         self.att = nn.Sequential(
-            nn.Tanh(), nn.Dropout(p=0.5), nn.Linear(128, 1)
+            nn.Tanh(), nn.Dropout(p=0.5), nn.Linear(2112, 1)
         )
 
     def forward(
-        self, images: Tensor, questions: Tensor
+        #self, images: Tensor, questions: Tensor
+        self, feats: Tensor, questions: Tensor
     ) -> Tuple[Tensor, Tensor]:
+        N, T, num_objs, _  = feats.size()
+        #bs x 5 x 5 x 2048
 
-        N, T, _, _, _ = images.size()
+
+        #N, T, _, _, _ = images.size()
         # bs x 5 x 3 x 256 x 256
-        img_feats = self.cnn(
-            images.contiguous().view(
-                -1, images.size(2), images.size(3), images.size(4)
-            )
-        )
+        #img_feats = self.cnn(
+        #    images.contiguous().view(
+        #        -1, images.size(2), images.size(3), images.size(4)
+        #    )
+        #)
 
-        img_feats = self.cnn_fc_layer(img_feats)
+        #img_feats = self.cnn_fc_layer(img_feats)
 
-        img_feats_tr = self.img_tr(img_feats)
+        #img_feats_tr = self.img_tr(img_feats)
+
+        feats = feats.contiguous().view(-1, feats.size(3))
+
         ques_feats = self.q_rnn(questions)
 
-        ques_feats_repl = ques_feats.view(N, 1, -1).repeat(1, T, 1)
-        ques_feats_repl = ques_feats_repl.view(N * T, -1)
+        ques_feats_repl = ques_feats.view(N, 1, -1).repeat(1, T * num_objs, 1)
+        ques_feats_repl = ques_feats_repl.view(N * (T * num_objs), -1)
 
         ques_feats_tr = self.ques_tr(ques_feats_repl)
 
-        ques_img_feats = torch.cat([ques_feats_tr, img_feats_tr], 1)
+        #ques_img_feats = torch.cat([ques_feats_tr, img_feats_tr], 1)
+        ques_img_feats = torch.cat([ques_feats_tr, feats], 1)
 
         att_feats = self.att(ques_img_feats)
-        att_probs = F.softmax(att_feats.view(N, T), dim=1)
-        att_probs2 = att_probs.view(N, T, 1).repeat(1, 1, 64)
+        att_probs = F.softmax(att_feats.view(N, T * num_objs), dim=1)
+        assert torch.all(torch.isclose(att_probs.sum(axis=1), torch.DoubleTensor([1.0000, 1.0000, 1.0000]))), "Don't sum to 1!"
+        att_probs2 = att_probs.view(N, T * num_objs, 1).repeat(1, 1, 2048)
 
-        att_img_feats = torch.mul(att_probs2, img_feats.view(N, T, 64))
+        att_img_feats = torch.mul(att_probs2, feats.view(N, T * num_objs, 2048))
         att_img_feats = torch.sum(att_img_feats, dim=1)
 
-        mul_feats = torch.mul(ques_feats, att_img_feats)
 
-        scores = self.classifier(mul_feats)
+        #TODO: These don't match. 
+        #mul_feats = torch.mul(ques_feats, att_img_feats)
+
+        #scores = self.classifier(mul_feats)
+        scores = self.classifier(att_img_feats)
 
         return scores, att_probs
 

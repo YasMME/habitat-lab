@@ -400,15 +400,36 @@ def img_bytes_2_np_array(
     return (*x[0:4], np.array(images, dtype=np.float32))
 
 def frcnn_data(x):
-    episode_id = x[0]
+    episode_id = x[1]
+    split = x[0]
     #TODO: Fix to use split
-    frcnn_tar = tarfile.open("/home/yasmeen/Downloads/frcnn/val.tar.gz")
-    array_file = BytesIO()
-    array_file.write(frcnn_tar.extractfile("frcnn_val/{0:0=4d}.{0:0=3d}.npz".format(episode_id, 2)))
-    array_file.seek(0)
-    a = numpy.load(array_file)
-    print(a['num_bbox'])
-    return img_bytes_2_np_array(x)
+    frcnn_directory = "/home/yasmeen/Downloads/frcnn/frcnn_{}/".format(split)
+    ep_id_str = "{0:0=4d}".format(episode_id)
+    logger.info(ep_id_str)
+    #attrs = np.zeros([5, 5])
+    #attr_confs = np.zeros([5,5])
+    #bboxs = np.zeros([5,5,4])
+    feats = np.zeros([5,5,2048])
+    #objs = np.zeros([5,5])
+    #obj_confs = np.zeros([5,5])
+    for i in range(0,5):
+        frame_str = "{0:03d}".format(i)
+        a_path = os.path.join(frcnn_directory, "{}.{}.npz".format(ep_id_str, frame_str))
+        a = np.load(a_path)
+    #    attrs[i] = a['attr'][0:5] 
+    #    logger.info('saved attrs')
+    #    attr_confs = a['attr_conf'][0:5]
+    #    logger.info('saved attr_conf')
+    #    bboxs[i] = a['bbox'][0:5]
+    #    logger.info('saved boxes')
+        feats[i] = a['feat'][0:5]
+    #    objs[i] = a['objects'][0:5]
+    #    logger.info('saved objs')
+    #    obj_confs = a['obj_conf'][0:5]
+    #    logger.info('saved obj confs')
+    #    episode_id, question, question_type, answer, frames = img_bytes_2_np_array(x[1:])
+    #return (episode_id, question, question_type, answer, frames, attrs, attr_confs, bboxs, feats, objs, obj_confs)
+    return (x[1], x[2], x[3], x[4], feats)
 
 
 def create_tar_archive(archive_path: str, dataset_path: str) -> None:

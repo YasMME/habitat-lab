@@ -162,7 +162,8 @@ class EQADataset(wds.Dataset):
                     diff = self.max_q_len - len(question)
                     for _ in range(diff):
                         question.append(0)
-
+                
+                current_sample["split"] = self.mode
                 current_sample["question"] = torch.LongTensor(question)
                 current_sample["question_type"] = self.episodes[episode_id].question.question_type
                 current_sample["answer"] = self.ans_vocab.word2idx(
