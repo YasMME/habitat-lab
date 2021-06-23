@@ -350,7 +350,8 @@ class VqaLstmCnnAttentionModel(nn.Module):
 
         att_feats = self.att(ques_img_feats)
         att_probs = F.softmax(att_feats.view(N, T * num_objs), dim=1)
-        assert torch.all(torch.isclose(att_probs.sum(axis=1), torch.DoubleTensor([1.0000, 1.0000, 1.0000]))), "Don't sum to 1!"
+        assert_tensor = torch.DoubleTensor([1.0000]).to('cuda:0')
+        assert torch.all(torch.isclose(att_probs.sum(axis=1), assert_tensor.repeat(N))), "Don't sum to 1!"
         att_probs2 = att_probs.view(N, T * num_objs, 1).repeat(1, 1, 2048)
 
         att_img_feats = torch.mul(att_probs2, feats.view(N, T * num_objs, 2048))
