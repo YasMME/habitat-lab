@@ -299,6 +299,7 @@ class VqaLstmCnnAttentionModel(nn.Module):
         self.q_rnn = QuestionLstmEncoder(**q_rnn_kwargs)
 
         self.img_tr = nn.Sequential(nn.Linear(64, 64), nn.Dropout(p=0.5))
+        self.feats_tr = nn.Sequential(nn.Linear(2048, 64), nn.Dropout(p=0.5))
 
         self.ques_tr = nn.Sequential(nn.Linear(64, 64), nn.Dropout(p=0.5))
 
@@ -344,25 +345,26 @@ class VqaLstmCnnAttentionModel(nn.Module):
         ques_feats_repl = ques_feats_repl.view(N * (T * num_objs), -1)
 
         ques_feats_tr = self.ques_tr(ques_feats_repl)
+        feats_tr = self.feats_tr(feats)
 
         #ques_img_feats = torch.cat([ques_feats_tr, img_feats_tr], 1)
-        ques_img_feats = torch.cat([ques_feats_tr, feats], 1)
+        ques_img_feats = torch.cat([ques_feats_tr, feats_tr], 1)
 
         att_feats = self.att(ques_img_feats)
         att_probs = F.softmax(att_feats.view(N, T * num_objs), dim=1)
         assert_tensor = torch.DoubleTensor([1.0000]).to('cuda:0')
         assert torch.all(torch.isclose(att_probs.sum(axis=1), assert_tensor.repeat(N))), "Don't sum to 1!"
-        att_probs2 = att_probs.view(N, T * num_objs, 1).repeat(1, 1, 2048)
+        att_probs2 = att_probs.view(N, T * num_objs, 1).repeat(1, 1, 64)
 
-        att_img_feats = torch.mul(att_probs2, feats.view(N, T * num_objs, 2048))
+        att_img_feats = torch.mul(att_probs2, feats.view(N, T * num_objs, 64))
         att_img_feats = torch.sum(att_img_feats, dim=1)
 
 
         #TODO: These don't match. 
-        #mul_feats = torch.mul(ques_feats, att_img_feats)
+        mul_feats = torch.mul(ques_feats, att_img_feats)
 
-        #scores = self.classifier(mul_feats)
-        scores = self.classifier(att_img_feats)
+        scores = self.classifier(mul_feats)
+        #scores = self.classifier(att_img_feats)
 
         return scores, att_probs
 
