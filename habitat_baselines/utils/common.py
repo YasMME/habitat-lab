@@ -403,9 +403,10 @@ def frcnn_data(x):
     episode_id = x[1]
     split = x[0]
     #TODO: Fix to use split
-    frcnn_directory = "/srv/data/gusemampya/frcnn/{}/".format(split)
+    #frcnn_directory = "/srv/data/gusemampya/frcnn/{}/".format(split)
+    frcnn_directory = "/home/yasmeen/Downloads/frcnn/frcnn_{}/".format(split)
     ep_id_str = "{0:0=4d}".format(episode_id)
-    logger.info(ep_id_str)
+    #logger.info(ep_id_str)
     #attrs = np.zeros([5, 5])
     #attr_confs = np.zeros([5,5])
     #bboxs = np.zeros([5,5,4])

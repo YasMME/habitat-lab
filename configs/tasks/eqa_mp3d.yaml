@@ -25,6 +25,7 @@ SIMULATOR:
 DATASET:
   TYPE: MP3DEQA-v1
   SPLIT: train
-  DATA_PATH: "/scratch/habitat/data/datasets/eqa/mp3d/v1/{split}/{split}.json.gz"
-  #DATA_PATH: "/home/yasmeen/Desktop/habitat-lab/data/datasets/eqa/mp3d/v1/{split}/{split}.json.gz"
-  SCENES_DIR: "/scratch/habitat/data/scene_datasets/"
+  DATA_PATH: "/home/yasmeen/Desktop/habitat-lab/data/datasets/eqa/mp3d/v1/{split}/{split}.json.gz"
+  SCENES_DIR: "data/scene_datasets/"
+  #DATA_PATH: "/scratch/habitat/data/datasets/eqa/mp3d/v1/{split}/{split}.json.gz"
+  #SCENES_DIR: "/scratch/habitat/data/scene_datasets/"

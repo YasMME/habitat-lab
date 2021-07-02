@@ -302,8 +302,11 @@ class VqaLstmCnnAttentionModel(nn.Module):
 
         self.ques_tr = nn.Sequential(nn.Linear(64, 64), nn.Dropout(p=0.5))
 
+        self.feats_pool = nn.AvgPool2d([5,  1], [5, 1], 0)
+        self.feats_linear = nn.Linear(2048, 64)
+
         classifier_kwargs = {
-            "input_dim": 2048,
+            "input_dim": 64,
             "hidden_dims": fc_dims,
             "output_dim": len(ans_vocab),
             "use_batchnorm": True,
@@ -336,33 +339,40 @@ class VqaLstmCnnAttentionModel(nn.Module):
 
         #img_feats_tr = self.img_tr(img_feats)
 
-        feats = feats.contiguous().view(-1, feats.size(3))
+        feats_pool = self.feats_pool(feats)
+
+#        feats = feats.contiguous().view(-1, feats.size(3))
+        
+        feats_pool = feats_pool.contiguous().view(-1, feats_pool.size(3))
 
         ques_feats = self.q_rnn(questions)
 
-        ques_feats_repl = ques_feats.view(N, 1, -1).repeat(1, T * num_objs, 1)
-        ques_feats_repl = ques_feats_repl.view(N * (T * num_objs), -1)
+        ques_feats_repl = ques_feats.view(N, 1, -1).repeat(1, T, 1)
+        ques_feats_repl = ques_feats_repl.view(N * (T), -1)
 
         ques_feats_tr = self.ques_tr(ques_feats_repl)
 
         #ques_img_feats = torch.cat([ques_feats_tr, img_feats_tr], 1)
-        ques_img_feats = torch.cat([ques_feats_tr, feats], 1)
+        ques_img_feats = torch.cat([ques_feats_tr, feats_pool], 1)
 
         att_feats = self.att(ques_img_feats)
-        att_probs = F.softmax(att_feats.view(N, T * num_objs), dim=1)
-        assert_tensor = torch.DoubleTensor([1.0000]).to('cuda:0')
+        att_probs = F.softmax(att_feats.view(N, T), dim=1)
+        assert_tensor = torch.DoubleTensor([1.0000])
+        #assert_tensor = torch.DoubleTensor([1.0000]).to('cuda:0')
         assert torch.all(torch.isclose(att_probs.sum(axis=1), assert_tensor.repeat(N))), "Don't sum to 1!"
-        att_probs2 = att_probs.view(N, T * num_objs, 1).repeat(1, 1, 2048)
+        att_probs2 = att_probs.view(N, T, 1).repeat(1, 1, 2048)
 
-        att_img_feats = torch.mul(att_probs2, feats.view(N, T * num_objs, 2048))
+        att_img_feats = torch.mul(att_probs2, feats_pool.view(N, T, 2048))
         att_img_feats = torch.sum(att_img_feats, dim=1)
-
+        
+        feats_64 = self.feats_linear(att_img_feats)
 
         #TODO: These don't match. 
         #mul_feats = torch.mul(ques_feats, att_img_feats)
+        mul_feats = torch.mul(ques_feats, feats_64)
 
-        #scores = self.classifier(mul_feats)
-        scores = self.classifier(att_img_feats)
+        scores = self.classifier(mul_feats)
+        #scores = self.classifier(att_img_feats)
 
         return scores, att_probs
 
