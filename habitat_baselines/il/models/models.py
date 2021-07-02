@@ -304,7 +304,7 @@ class VqaLstmCnnAttentionModel(nn.Module):
         self.ques_tr = nn.Sequential(nn.Linear(64, 64), nn.Dropout(p=0.5))
 
         classifier_kwargs = {
-            "input_dim": 2048,
+            "input_dim": 64,
             "hidden_dims": fc_dims,
             "output_dim": len(ans_vocab),
             "use_batchnorm": True,
@@ -314,7 +314,7 @@ class VqaLstmCnnAttentionModel(nn.Module):
         self.classifier = build_mlp(**classifier_kwargs)
 
         self.att = nn.Sequential(
-            nn.Tanh(), nn.Dropout(p=0.5), nn.Linear(2112, 1)
+            nn.Tanh(), nn.Dropout(p=0.5), nn.Linear(128, 1)
         )
 
     def forward(
@@ -356,7 +356,7 @@ class VqaLstmCnnAttentionModel(nn.Module):
         assert torch.all(torch.isclose(att_probs.sum(axis=1), assert_tensor.repeat(N))), "Don't sum to 1!"
         att_probs2 = att_probs.view(N, T * num_objs, 1).repeat(1, 1, 64)
 
-        att_img_feats = torch.mul(att_probs2, feats.view(N, T * num_objs, 64))
+        att_img_feats = torch.mul(att_probs2, feats_tr.view(N, T * num_objs, 64))
         att_img_feats = torch.sum(att_img_feats, dim=1)
 
 
